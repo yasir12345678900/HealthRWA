@@ -41,8 +41,10 @@ npm run deploy:local | tee .logs/deploy.log
 
 pkill -f "streamlit run app.py" 2>/dev/null || true
 
-echo "Starting HALAH Streamlit application..."
+echo "Starting HALAH Streamlit application on 0.0.0.0:8501..."
 exec streamlit run app.py \
+  --server.address 0.0.0.0 \
   --server.enableCORS false \
   --server.enableXsrfProtection false \
-  --server.port 8501
+  --server.port 8501 \
+  --browser.gatherUsageStats false
