@@ -6,6 +6,10 @@ on:
       - feature/local-hardhat-integration
   workflow_dispatch:
 
+concurrency:
+  group: halah-local-blockchain-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
