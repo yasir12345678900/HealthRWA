@@ -1,101 +1,115 @@
 // SPDX-License-Identifier: MIT
-/*
-Consent SBT for HALAH
-History Access Link for Authorised Healthcare Version 1
-Authors: Charles, Yasir, Daniel, Kejia, Yasmin, Farookh
-Date: 2026-06-3
-*/
-
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
+/// @title HALAH Consent Soulbound Token
+/// @notice Local proof-of-concept registry for time-bound patient consent.
 contract ConsentSBT is ERC721, Ownable {
-    uint256 private tokenCounter;
+    uint256 private _nextTokenId;
+
     struct Consent {
         address patient;
         address requester;
+        bytes32 consentHash;
         string purpose;
-        uint256 expiry;
+        uint64 validFrom;
+        uint64 validUntil;
         bool revoked;
     }
 
-    mapping(
-        uint256 => Consent
-    )
-    public consents;
+    mapping(uint256 => Consent) public consents;
+    mapping(bytes32 => uint256) public tokenByConsentHash;
 
-    constructor()
-    ERC721(
-        "MedicalConsent",
-        "CONSENT"
-    )
-    {}
+    event ConsentIssued(
+        uint256 indexed tokenId,
+        bytes32 indexed consentHash,
+        address indexed patient,
+        address requester,
+        uint64 validFrom,
+        uint64 validUntil
+    );
+
+    event ConsentRevoked(
+        uint256 indexed tokenId,
+        bytes32 indexed consentHash,
+        uint256 revokedAt
+    );
+
+    constructor() ERC721("HALAH Medical Consent", "HALAH-CONSENT") {}
 
     function mintConsent(
         address patient,
         address requester,
-        string memory purpose,
-        uint256 expiry
-    )
+        bytes32 consentHash,
+        string calldata purpose,
+        uint64 validFrom,
+        uint64 validUntil
+    ) external onlyOwner returns (uint256 tokenId) {
+        require(patient != address(0), "Invalid patient");
+        require(requester != address(0), "Invalid requester");
+        require(consentHash != bytes32(0), "Invalid consent hash");
+        require(validUntil > validFrom, "Invalid validity window");
+        require(tokenByConsentHash[consentHash] == 0, "Consent already minted");
 
-    public onlyOwner
-    returns(uint256){
-        tokenCounter++;
-        uint256 tokenId =
-            tokenCounter;
-        _safeMint(
-            patient,
-            tokenId
-        );
+        tokenId = ++_nextTokenId;
+        _safeMint(patient, tokenId);
 
-        consents[tokenId]=Consent(
+        consents[tokenId] = Consent({
+            patient: patient,
+            requester: requester,
+            consentHash: consentHash,
+            purpose: purpose,
+            validFrom: validFrom,
+            validUntil: validUntil,
+            revoked: false
+        });
+        tokenByConsentHash[consentHash] = tokenId;
+
+        emit ConsentIssued(
+            tokenId,
+            consentHash,
             patient,
             requester,
-            purpose,
-            expiry,
-            false
+            validFrom,
+            validUntil
         );
-        return tokenId;
     }
 
+    function revoke(uint256 tokenId) external onlyOwner {
+        require(_exists(tokenId), "Unknown token");
+        Consent storage consent = consents[tokenId];
+        require(!consent.revoked, "Already revoked");
+        consent.revoked = true;
+        emit ConsentRevoked(tokenId, consent.consentHash, block.timestamp);
+    }
 
+    function checkValid(uint256 tokenId) public view returns (bool) {
+        if (!_exists(tokenId)) return false;
+        Consent memory consent = consents[tokenId];
+        return
+            !consent.revoked &&
+            block.timestamp >= consent.validFrom &&
+            block.timestamp <= consent.validUntil;
+    }
 
-    /*
-    Soulbound: disable transfer
-    */
-
-    function transferFrom(
-        address,
-        address,
-        uint256
-    )
-
-    public override
+    function checkAccess(uint256 tokenId, address requester)
+        external
+        view
+        returns (bool)
     {
-        revert("Soulbound Token");
+        return checkValid(tokenId) && consents[tokenId].requester == requester;
     }
 
-    function revoke(uint256 tokenId)
-
-    public onlyOwner{
-        consents[tokenId]
-        .revoked=true;
-    }
-
-
-    function checkValid(uint256 tokenId)
-
-    public view returns(bool){
-        Consent memory c = consents[tokenId];
-
-        if(c.revoked)
-            return false;
-
-
-        if(block.timestamp > c.expiry)
-            return false;
-        return true;
+    /// @dev Soulbound behaviour: minting and burning are allowed; transfers are not.
+    function _beforeTokenTransfer(
+        address from,
+        address to,
+        uint256 firstTokenId,
+        uint256 batchSize
+    ) internal override {
+        require(from == address(0) || to == address(0), "Soulbound token");
+        super._beforeTokenTransfer(from, to, firstTokenId, batchSize);
     }
 }
