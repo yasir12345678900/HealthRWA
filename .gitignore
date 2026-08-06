@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node / Hardhat
+node_modules/
+blockchain/artifacts/
+blockchain/cache/
+blockchain/deployment/
+blockchain/evidence/
+
+# Local runtime
+.logs/
+.streamlit/secrets.toml
+.env
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
