@@ -1,0 +1,16 @@
+{
+  "name": "healthrwa-local-blockchain",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "node": "hardhat node",
+    "deploy:local": "hardhat run blockchain/scripts/deploy.js --network localhost",
+    "test:contracts": "hardhat test"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "5.0.0",
+    "@openzeppelin/contracts": "4.9.6",
+    "hardhat": "2.22.17"
+  }
+}
