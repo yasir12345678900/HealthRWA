@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from web3 import Web3
+from web3.logs import DISCARD
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -179,7 +180,10 @@ class ConsentContract:
         ).transact({"from": self.owner_address})
 
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
-        events = self.contract.events.ConsentIssued().process_receipt(receipt)
+        events = self.contract.events.ConsentIssued().process_receipt(
+            receipt,
+            errors=DISCARD,
+        )
         if not events:
             raise BlockchainError("ConsentIssued event was not emitted.")
         token_id = int(events[0]["args"]["tokenId"])
@@ -199,7 +203,10 @@ class ConsentContract:
             {"from": self.owner_address}
         )
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
-        events = self.contract.events.ConsentRevoked().process_receipt(receipt)
+        events = self.contract.events.ConsentRevoked().process_receipt(
+            receipt,
+            errors=DISCARD,
+        )
         if not events:
             raise BlockchainError("ConsentRevoked event was not emitted.")
 
