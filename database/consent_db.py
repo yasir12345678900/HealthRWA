@@ -1,44 +1,41 @@
-CONSENTS={}
+"""In-memory consent registry for the HALAH proof of concept."""
 
-def save(consent):
-    CONSENTS[consent.consent_id]=consent
+from __future__ import annotations
 
-def get(consent_id):
-    return CONSENTS.get(consent_id)
+from models.consent import Consent
 
 
-def update(consent):
-    CONSENTS[consent.consent_id]=consent
+CONSENTS: dict[str, Consent] = {}
 
-def revoke(consent_id):
-    consent=get(consent_id)
 
+def save(consent: Consent) -> None:
+    CONSENTS[consent.consent_id] = consent
+
+
+def get(consent_id: str) -> Consent | None:
+    return CONSENTS.get(consent_id.strip())
+
+
+def update(consent: Consent) -> None:
+    CONSENTS[consent.consent_id] = consent
+
+
+def revoke(consent_id: str) -> Consent | None:
+    consent = get(consent_id)
     if consent:
-        consent.revoked=True
+        consent.revoked = True
+        consent.state = "REVOKED"
         update(consent)
+    return consent
 
 
-def get_patient_consent(patient):
-    return [
-        c
-        for c in CONSENTS.values()
-        if c.patient_did==patient
-    ]
+def get_patient_consent(patient: str) -> list[Consent]:
+    return [consent for consent in CONSENTS.values() if consent.patient_did == patient]
 
 
-# CONSENTS={}
-# def save(consent):
-#     CONSENTS[
-#         consent.consent_id
-#     ]=consent
+def all_consents() -> list[Consent]:
+    return list(CONSENTS.values())
 
-# def get(consent_id):
-#     return CONSENTS.get(
-#         consent_id
-#     )
 
-# def get_patient_consent(patient):
-#     return [
-#         c for c in CONSENTS.values()
-#         if c.patient_did==patient
-#     ]
+def clear() -> None:
+    CONSENTS.clear()
