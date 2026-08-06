@@ -1,9 +1,19 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const {
+  anyValue
+} = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 
 async function latestTimestamp() {
   const block = await ethers.provider.getBlock("latest");
   return block.timestamp;
+}
+
+function hashes(label) {
+  return {
+    consentHash: ethers.keccak256(ethers.toUtf8Bytes(`consent:${label}`)),
+    approvalHash: ethers.keccak256(ethers.toUtf8Bytes(`approvals:${label}`))
+  };
 }
 
 describe("ConsentSBT", function () {
@@ -15,48 +25,96 @@ describe("ConsentSBT", function () {
     return { contract, owner, patient, requester, other };
   }
 
-  it("mints a unique time-bound consent SBT and emits ConsentIssued", async function () {
+  async function mintDefault(contract, patient, requester, label = "001") {
+    const now = await latestTimestamp();
+    const { consentHash, approvalHash } = hashes(label);
+    const tx = await contract.mintConsent(
+      patient.address,
+      requester.address,
+      consentHash,
+      approvalHash,
+      "Treatment",
+      now,
+      now + 3600,
+      2,
+      2
+    );
+    await tx.wait();
+    return { now, consentHash, approvalHash };
+  }
+
+  it("mints a unique threshold-approved ERC-5484-style consent SBT", async function () {
     const { contract, patient, requester } = await deployFixture();
     const now = await latestTimestamp();
-    const consentHash = ethers.keccak256(ethers.toUtf8Bytes("consent-001"));
+    const { consentHash, approvalHash } = hashes("issued");
 
     await expect(
       contract.mintConsent(
         patient.address,
         requester.address,
         consentHash,
+        approvalHash,
         "Treatment",
         now,
-        now + 3600
+        now + 3600,
+        2,
+        2
       )
     )
       .to.emit(contract, "ConsentIssued")
       .withArgs(
         1,
         consentHash,
+        approvalHash,
         patient.address,
         requester.address,
         now,
-        now + 3600
+        now + 3600,
+        2,
+        2
       );
 
     expect(await contract.ownerOf(1)).to.equal(patient.address);
     expect(await contract.tokenByConsentHash(consentHash)).to.equal(1);
     expect(await contract.checkAccess(1, requester.address)).to.equal(true);
+    expect(await contract.burnAuth(1)).to.equal(0); // IssuerOnly
+  });
+
+  it("rejects minting when the multi-party threshold is not met", async function () {
+    const { contract, patient, requester } = await deployFixture();
+    const now = await latestTimestamp();
+    const { consentHash, approvalHash } = hashes("insufficient");
+
+    await expect(
+      contract.mintConsent(
+        patient.address,
+        requester.address,
+        consentHash,
+        approvalHash,
+        "Treatment",
+        now,
+        now + 3600,
+        2,
+        1
+      )
+    ).to.be.revertedWith("Insufficient approvals");
   });
 
   it("rejects duplicate consent hashes", async function () {
     const { contract, patient, requester } = await deployFixture();
     const now = await latestTimestamp();
-    const consentHash = ethers.keccak256(ethers.toUtf8Bytes("same-consent"));
+    const { consentHash, approvalHash } = hashes("duplicate");
 
     await contract.mintConsent(
       patient.address,
       requester.address,
       consentHash,
+      approvalHash,
       "Treatment",
       now,
-      now + 3600
+      now + 3600,
+      2,
+      2
     );
 
     await expect(
@@ -64,46 +122,36 @@ describe("ConsentSBT", function () {
         patient.address,
         requester.address,
         consentHash,
+        ethers.keccak256(ethers.toUtf8Bytes("other-approvals")),
         "Treatment",
         now,
-        now + 7200
+        now + 7200,
+        2,
+        2
       )
     ).to.be.revertedWith("Consent already minted");
   });
 
-  it("is non-transferable", async function () {
+  it("is soulbound and rejects transfer approvals", async function () {
     const { contract, patient, requester, other } = await deployFixture();
-    const now = await latestTimestamp();
-    const consentHash = ethers.keccak256(ethers.toUtf8Bytes("consent-002"));
-
-    await contract.mintConsent(
-      patient.address,
-      requester.address,
-      consentHash,
-      "Treatment",
-      now,
-      now + 3600
-    );
+    await mintDefault(contract, patient, requester, "soulbound");
 
     await expect(
-      contract
-        .connect(patient)
-        .transferFrom(patient.address, other.address, 1)
+      contract.connect(patient).transferFrom(patient.address, other.address, 1)
+    ).to.be.revertedWith("Soulbound token");
+
+    await expect(
+      contract.connect(patient).approve(other.address, 1)
     ).to.be.revertedWith("Soulbound token");
   });
 
-  it("denies access after revocation", async function () {
+  it("denies access after issuer revocation and emits ConsentRevoked", async function () {
     const { contract, patient, requester } = await deployFixture();
-    const now = await latestTimestamp();
-    const consentHash = ethers.keccak256(ethers.toUtf8Bytes("consent-003"));
-
-    await contract.mintConsent(
-      patient.address,
-      requester.address,
-      consentHash,
-      "Treatment",
-      now,
-      now + 3600
+    const { consentHash } = await mintDefault(
+      contract,
+      patient,
+      requester,
+      "revocation"
     );
 
     await expect(contract.revoke(1))
@@ -111,20 +159,24 @@ describe("ConsentSBT", function () {
       .withArgs(1, consentHash, anyValue);
 
     expect(await contract.checkValid(1)).to.equal(false);
+    expect(await contract.checkAccess(1, requester.address)).to.equal(false);
   });
 
   it("denies access before validFrom and after validUntil", async function () {
     const { contract, patient, requester } = await deployFixture();
     const now = await latestTimestamp();
-    const consentHash = ethers.keccak256(ethers.toUtf8Bytes("consent-004"));
+    const { consentHash, approvalHash } = hashes("time-window");
 
     await contract.mintConsent(
       patient.address,
       requester.address,
       consentHash,
+      approvalHash,
       "Treatment",
       now + 100,
-      now + 200
+      now + 200,
+      2,
+      2
     );
 
     expect(await contract.checkValid(1)).to.equal(false);
@@ -137,6 +189,12 @@ describe("ConsentSBT", function () {
     await ethers.provider.send("evm_mine", []);
     expect(await contract.checkValid(1)).to.equal(false);
   });
-});
 
-const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
+  it("denies an address that is not the authorised requester", async function () {
+    const { contract, patient, requester, other } = await deployFixture();
+    await mintDefault(contract, patient, requester, "requester");
+
+    expect(await contract.checkAccess(1, requester.address)).to.equal(true);
+    expect(await contract.checkAccess(1, other.address)).to.equal(false);
+  });
+});
