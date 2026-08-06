@@ -1,35 +1,38 @@
-'''
-# Consent State Machine for HALAH
-History Access Link for Authorised Healthcare Version 1
-Authors: Charles, Yasir, Daniel, Kejia, Yasmin, Farookh
-Date: 2026-06-22, 2026-08-01
-'''
-from datetime import datetime
+"""Consent lifecycle state machine for HALAH."""
 
-def evaluate_state(consent):
-    now = datetime.now()
-    start = datetime.fromisoformat(consent.start_date)
-    expiry = datetime.fromisoformat(consent.expiry_date)
+from __future__ import annotations
 
-    # if consent.revoked:
-    #     consent.state = "REVOKED"
-    #     return consent.state
+from datetime import datetime, timezone
 
-    if len(consent.signatures) < consent.threshold:
+from models.consent import Consent
+
+
+def _as_utc(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def evaluate_state(consent: Consent, now: datetime | None = None) -> str:
+    """Evaluate threshold, blockchain issuance, validity window, and revocation."""
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    else:
+        current = current.astimezone(timezone.utc)
+
+    if consent.revoked:
+        consent.state = "REVOKED"
+    elif len(set(consent.signatures)) < consent.threshold:
         consent.state = "PENDING_SIGNATURE"
-        return consent.state
-
-    if consent.token_id is None:
-        consent.state = "PENDING_TOKEN"
-        return consent.state
-
-    if now < start:
+    elif consent.token_id is None:
+        consent.state = "PENDING_BLOCKCHAIN"
+    elif consent.start_date and current < _as_utc(consent.start_date):
         consent.state = "NOT_STARTED"
-        return consent.state
-
-    if now > expiry:
+    elif consent.expiry_date and current > _as_utc(consent.expiry_date):
         consent.state = "EXPIRED"
-        return consent.state
+    else:
+        consent.state = "ACTIVE"
 
-    consent.state = "ACTIVE"
     return consent.state
