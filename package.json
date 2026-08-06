@@ -7,6 +7,7 @@
     "node": "hardhat node",
     "deploy:local": "hardhat run blockchain/scripts/deploy.js --network localhost",
     "deploy:ephemeral": "hardhat run blockchain/scripts/deploy.js",
+    "e2e:contracts": "hardhat run blockchain/scripts/e2e-demo.js",
     "test:contracts": "hardhat test"
   },
   "devDependencies": {
