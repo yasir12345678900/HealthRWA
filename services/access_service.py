@@ -1,61 +1,28 @@
-'''
-Secure Data Access for HALAH
-History Access Link for Authorised Healthcare Version 1
-Authors: Charles, Yasir, Daniel, Kejia, Yasmin, Farookh
-Date: 2026-06-10
-'''
+"""Fine-grained patient-data access checks for HALAH."""
 
-def check_scope(consent, request):
+from __future__ import annotations
+
+from models.access import AccessRequest
+from models.consent import Consent
+
+
+def check_scope(consent: Consent, request: AccessRequest) -> bool:
     requested = set(request.scope)
-    allowed = set(consent.scope)
-    return requested.issubset(allowed)
+    authorised = set(consent.scope)
+    return bool(requested) and requested.issubset(authorised)
 
 
 def authorize(
-    state,
-    proof,
-    scope_valid
-):
-    if state != "ACTIVE":
-        return False
-
-    if not proof:
-        return False
-
-    if not scope_valid:
-        return False
-
-    return True
-
-
-#############################################################
-# def check_scope(consent,request):
-#         requested=set(request.scope)
-#         allowed=set(consent.scope)
-#         if requested.issubset(allowed):
-#             return True
-
-#         return False
-
-
-# def authorize(state,proof,scope_valid):
-#     return (
-#         state=="ACTIVE"
-#         and proof
-#         and scope_valid
-#     )
-
-###################################################################
-# def authorize(
-#     state,
-#     proof,
-#     scope
-# ):
-
-#     return (
-#         state=="ACTIVE"
-#         and
-#         proof
-#         and
-#         scope
-#     )
+    *,
+    state: str,
+    scope_valid: bool,
+    on_chain_valid: bool,
+    requester_authorised: bool,
+) -> bool:
+    """Grant only when application and local smart-contract checks agree."""
+    return (
+        state == "ACTIVE"
+        and scope_valid
+        and on_chain_valid
+        and requester_authorised
+    )
