@@ -1,0 +1,47 @@
+name: Hardhat contract CI
+
+on:
+  push:
+    branches:
+      - feature/local-hardhat-integration
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-tests:
+    name: Compile, test, and deploy on an ephemeral Hardhat chain
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Compile smart contracts
+        run: npm run compile
+
+      - name: Run smart-contract tests
+        run: npm run test:contracts
+
+      - name: Deploy to an ephemeral local Hardhat blockchain
+        run: npx hardhat run blockchain/scripts/deploy.js
+
+      - name: Upload contract build and deployment evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardhat-contract-evidence
+          path: |
+            blockchain/artifacts/
+            blockchain/deployment/local.json
+          if-no-files-found: error
+          retention-days: 14
