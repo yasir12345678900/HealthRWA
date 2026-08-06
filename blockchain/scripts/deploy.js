@@ -3,8 +3,11 @@ const path = require("path");
 const hre = require("hardhat");
 
 async function main() {
+  const [deployer] = await hre.ethers.getSigners();
   const ConsentSBT = await hre.ethers.getContractFactory("ConsentSBT");
   const contract = await ConsentSBT.deploy();
+  const deploymentTx = contract.deploymentTransaction();
+  const receipt = await deploymentTx.wait();
   await contract.waitForDeployment();
 
   const address = await contract.getAddress();
@@ -13,6 +16,11 @@ async function main() {
   const deployment = {
     contractAddress: address,
     chainId: Number(network.chainId),
+    networkName: hre.network.name,
+    deployer: deployer.address,
+    transactionHash: receipt.hash,
+    blockNumber: receipt.blockNumber,
+    gasUsed: receipt.gasUsed.toString(),
     deployedAt: new Date().toISOString()
   };
 
@@ -25,6 +33,9 @@ async function main() {
 
   console.log("ConsentSBT deployed:", address);
   console.log("Chain ID:", network.chainId.toString());
+  console.log("Deployment tx:", receipt.hash);
+  console.log("Block number:", receipt.blockNumber);
+  console.log("Gas used:", receipt.gasUsed.toString());
 }
 
 main().catch((error) => {
